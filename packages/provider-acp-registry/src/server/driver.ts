@@ -15,7 +15,10 @@ import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as HttpClient from "effect/http/HttpClient";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
@@ -57,6 +60,7 @@ import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.ts";
 import * as AcpRegistryAuth from "./auth.ts";
 import * as AcpRegistryAuthenticationState from "./authenticationState.ts";
+import { isKimiAcpAgent, readKimiUsageLimits } from "./kimiUsageLimits.ts";
 
 const DRIVER_KIND = ProviderDriverKind.make("acpRegistry");
 const decodeSettings = Schema.decodeSync(AcpRegistrySettings);
@@ -468,6 +472,7 @@ export const checkAcpRegistryProviderReadiness = Effect.fn(
 export type AcpRegistryDriverEnv =
   | AcpRegistryAdapterV2DriverEnv
   | Digest.Digest
+  | HttpClient.HttpClient
   | ProviderHost.ProviderHost;
 
 export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryDriverEnv> = {
@@ -583,10 +588,24 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
             }),
           );
     });
-    const checkProvider = checkAcpRegistryProviderReadiness(readinessInput).pipe(
+    const checkUsageLimits =
+      effectiveConfig.enabled && isKimiAcpAgent(effectiveConfig)
+        ? readKimiUsageLimits({ environment: processEnvironment }).pipe(
+            Effect.provideService(FileSystem.FileSystem, yield* FileSystem.FileSystem),
+            Effect.provideService(Path.Path, yield* Path.Path),
+            Effect.provideService(HttpClient.HttpClient, yield* HttpClient.HttpClient),
+            Effect.provideService(Digest.Digest, yield* Digest.Digest),
+          )
+        : undefined;
+    const checkReadiness = checkAcpRegistryProviderReadiness(readinessInput).pipe(
       Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
       Effect.flatMap(withLiveRuntimeState),
     );
+    const checkProvider = checkUsageLimits
+      ? Effect.all({ provider: checkReadiness, usageLimits: checkUsageLimits }).pipe(
+          Effect.map(({ provider, usageLimits }) => ({ ...provider, usageLimits })),
+        )
+      : checkReadiness;
     const enrichProvider = checkAcpRegistryProviderStatus(
       {
         ...readinessInput,
@@ -650,8 +669,9 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
       getSettings: snapshotSettings.getSettings,
       streamSettings: snapshotSettings.streamSettings,
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
-      initialSnapshot: () => checkProvider,
+      initialSnapshot: () => checkReadiness,
       checkProvider,
+      ...(checkUsageLimits ? { checkUsageLimits } : {}),
       enrichSnapshot: Effect.fn("enrichSnapshot")(function ({
         snapshot,
         getSnapshot,

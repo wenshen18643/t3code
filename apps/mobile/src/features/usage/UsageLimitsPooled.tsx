@@ -447,13 +447,13 @@ export function UsageLimitsSection({
       {pools.map((pool, index) => {
         const windows = displayLimitWindows(pool);
         return (
-          <Fragment key={pool.driver}>
+          <Fragment key={pool.key}>
             {index === cursorPromptAt ? cursorPrompt : null}
             <View className="gap-3">
               <View className="flex-row items-center gap-2 px-1">
-                <ProviderIcon provider={pool.driver} size={18} />
+                <ProviderIcon provider={pool.driver} iconUrl={pool.iconUrl} size={18} />
                 <Text className="text-base font-t3-medium text-foreground">
-                  {DRIVER_LABEL[pool.driver] ?? pool.driver}
+                  {pool.label ?? DRIVER_LABEL[pool.driver] ?? pool.driver}
                 </Text>
               </View>
               {windows.map((window) => {

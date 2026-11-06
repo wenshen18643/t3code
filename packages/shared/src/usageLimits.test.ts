@@ -859,6 +859,7 @@ describe("pools", () => {
           email: undefined,
           plan: undefined,
           accentColor: undefined,
+          iconUrl: undefined,
           environments: [],
           sourceLabel: null,
           redeem: null,
@@ -904,6 +905,7 @@ describe("pooled account columns", () => {
     email: undefined,
     plan: undefined,
     accentColor: undefined,
+    iconUrl: undefined,
     environments: [],
     sourceLabel: "Hub",
     redeem: null,
@@ -949,6 +951,23 @@ describe("pooled account columns", () => {
       });
     },
   );
+
+  it("gives each ACP Registry agent its own named pool", () => {
+    const registry = ProviderDriverKind.make("acpRegistry");
+    const pools = collectLimitPools(
+      [
+        { ...account("kimi", [window]), driver: registry, displayName: "Kimi Code" },
+        account("claude", [window]),
+        { ...account("droid", [window]), driver: registry, displayName: "Droid" },
+      ],
+      now,
+    );
+    expect(pools.map(({ key, label }) => ({ key, label }))).toEqual([
+      { key: "acpRegistry:Kimi Code", label: "Kimi Code" },
+      { key: "claudeAgent", label: null },
+      { key: "acpRegistry:Droid", label: "Droid" },
+    ]);
+  });
 
   it("excludes weekly-blocked sessions from the pool without changing snapshots or model allowances", () => {
     const blocked = account("blocked", [
